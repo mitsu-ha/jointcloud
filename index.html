@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gateway Configuration</title>
+  <!-- 引入 GoJS 库 -->
+  <script src="https://unpkg.com/gojs/release/go.js"></script>
+  <style>
+    body{
+      background-image: url('backgrounds/background.png');
+      background-size: cover; /* 图片填充整个 div */
+    }
+    /* 设置图表容器的样式 */
+    #myDiagramDiv {
+      width: 800px;
+      height: 500px;
+      border: 1px solid black;
+      margin-bottom: 20px;
+      
+    }
+
+    /* 设置表格容器的样式 */
+    #tableDiv {
+      width: 800px;
+      border: 1px solid black;
+      overflow-y: scroll;
+      margin-bottom: 20px;
+    }
+
+    /* 设置表格的样式 */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      border: 1px solid black;
+      padding: 8px;
+      text-align: left;
+    }
+
+    /* 设置按钮的样式 */
+    button {
+      margin-right: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Gateway Configuration</h1>
+
+  <!-- 用于承载 GoJS 图表的容器 -->
+  <div id="myDiagramDiv"></div>
+  <div id="tooltip" style="display: none; position: absolute; background-color: white; padding: 5px;"></div>
+ 
+  <input id="levelSlider" type = "hidden"
+      type="range" min="0" max="5" value="3"></p>
+  <div id="buttons"><button id="saveModel" onclick="save()">Save</button> <button id="loadModel"
+      onclick="load()">Load</button> Diagram Model saved in JSON format:</div><textarea id="mySavedModel"
+    style="width:100%;height:300px">{ "class": "go.GraphLinksModel",
+      "nodeDataArray": [
+      {"key":1, "text":"Main 1", "isGroup":true, "category":"OfGroups"},
+      {"key":2, "text":"Main 2", "isGroup":true, "category":"OfGroups"},
+      {"key":3, "text":"Group A", "isGroup":true, "category":"OfNodes", "group":1},
+      {"key":4, "text":"Group B", "isGroup":true, "category":"OfNodes", "group":1},
+      {"key":5, "text":"Group C", "isGroup":true, "category":"OfNodes", "group":2},
+      {"key":6, "text":"Group D", "isGroup":true, "category":"OfNodes", "group":2},
+      {"text":"first A", "group":3, "key":-7, "isGateway":false},
+      {"text":"second A", "group":3, "key":-8, "isGateway":true},
+      {"text":"first B", "group":4, "key":-9, "isGateway":true},
+      {"text":"second B", "group":4, "key":-10, "isGateway":false},
+      {"text":"third B", "group":4, "key":-11, "isGateway":false},
+      {"text":"first C", "group":5, "key":-12, "isGateway":false},
+      {"text":"second C", "group":5, "key":-13, "isGateway":true},
+      {"text":"first D", "group":6, "key":-14, "isGateway":true}
+      ],
+      "linkDataArray": [  ]}
+    </textarea>
+  <div id="tableDiv"></div> <!-- This div will contain the table -->
+  <script>
+    function init() {
+      
+      if (window.goSamples) goSamples();  // init for these samples -- you don't need to call this
+      var $ = go.GraphObject.make;
+      myDiagram =
+        $(go.Diagram, "myDiagramDiv",
+          {
+            // what to do when a drag-drop occurs in the Diagram's background
+            mouseDrop: function (e) { finishDrop(e, null); },
+            layout:  // Diagram has simple horizontal layout
+              $(go.GridLayout,
+                { wrappingWidth: Infinity, alignment: go.GridLayout.Position, cellSize: new go.Size(1, 1) }),
+            "commandHandler.archetypeGroupData": { isGroup: true, category: "OfNodes" },
+            "undoManager.isEnabled": true
+          });
+
+      function highlightGroup(e, grp, show) {
+        if (!grp) return;
+        e.handled = true;
+        if (show) {
+
+          var tool = grp.diagram.toolManager.draggingTool;
+          var map = tool.draggedParts || tool.copiedParts;  // this is a Map
+
+          if (grp.canAddMembers(map.toKeySet())) {
+            grp.isHighlighted = true;
+            return;
+          }
+        }
+        grp.isHighlighted = false;
+      }
+
+      function finishDrop(e, grp) {
+        var ok = (grp !== null
+          ? grp.addMembers(grp.diagram.selection, true)
+          : e.diagram.commandHandler.addTopLevelParts(e.diagram.selection, true));
+        if (!ok) e.diagram.currentTool.doCancel();
+      }
+      myDiagram.groupTemplateMap.add("OfGroups",
+        $(go.Group, "Auto",
+          {
+            background: "transparent",
+            // highlight when dragging into the Group
+            mouseDragEnter: function (e, grp, prev) { highlightGroup(e, grp, true); },
+            mouseDragLeave: function (e, grp, next) { highlightGroup(e, grp, false); },
+            computesBoundsAfterDrag: true,
+
+            mouseDrop: finishDrop,
+            handlesDragDropForMembers: true,  
+            layout:
+              $(go.GridLayout,
+                {
+                  wrappingWidth: Infinity, alignment: go.GridLayout.Position,
+                  cellSize: new go.Size(1, 1), spacing: new go.Size(4, 4)
+                })
+          },
+          new go.Binding("background", "isHighlighted", function (h) { return h ? "rgba(255,0,0,0.2)" : "transparent"; }).ofObject(),
+          $(go.Shape, "Rectangle",
+            { fill: null, stroke: "#FFDD33", strokeWidth: 2 }),
+          $(go.Panel, "Vertical",  // title above Placeholder
+            $(go.Panel, "Horizontal",  // button next to TextBlock
+              { stretch: go.GraphObject.Horizontal, background: "#FFDD33" },
+              $("SubGraphExpanderButton",
+                { alignment: go.Spot.Right, margin: 5 }),
+              $(go.TextBlock,
+                {
+                  alignment: go.Spot.Left,
+                  editable: true,
+                  margin: 5,
+                  font: "bold 18px sans-serif",
+                  opacity: 0.75,
+                  stroke: "#404040"
+                },
+                new go.Binding("text", "text").makeTwoWay())
+            ),  // end Horizontal Panel
+            $(go.Placeholder,
+              { padding: 5, alignment: go.Spot.TopLeft })
+          )  // end Vertical Panel
+        ));  // end Group and call to add to template Map
+      myDiagram.groupTemplateMap.add("OfNodes",
+        $(go.Group, "Auto",
+          {
+            background: "transparent",
+            ungroupable: true,
+            // highlight when dragging into the Group
+            mouseDragEnter: function (e, grp, prev) { highlightGroup(e, grp, true); },
+            mouseDragLeave: function (e, grp, next) { highlightGroup(e, grp, false); },
+            computesBoundsAfterDrag: true,
+            mouseDrop: finishDrop,
+            layout:
+              $(go.GridLayout,
+                {
+                  wrappingColumn: 1, alignment: go.GridLayout.Position,
+                  cellSize: new go.Size(1, 1), spacing: new go.Size(4, 4)
+                })
+          },
+          new go.Binding("background", "isHighlighted", function (h) { console.log(111); h ? "rgba(255,0,0,0.2)" : "transparent"; }).ofObject(),
+          $(go.Shape, "Rectangle",
+            { fill: null, stroke: "#33D3E5", strokeWidth: 2 }),
+          $(go.Panel, "Vertical",  // title above Placeholder
+            $(go.Panel, "Horizontal",  // button next to TextBlock
+              { stretch: go.GraphObject.Horizontal, background: "#33D3E5" },
+              $("SubGraphExpanderButton",
+                { alignment: go.Spot.Right, margin: 5 }),
+              $(go.TextBlock,
+                {
+                  alignment: go.Spot.Left,
+                  editable: true,
+                  margin: 5,
+                  font: "bold 16px sans-serif",
+                  opacity: 0.75,
+                  stroke: "#404040"
+                },
+                new go.Binding("text", "text").makeTwoWay())
+            ),  // end Horizontal Panel
+            $(go.Placeholder,
+              { padding: 5, alignment: go.Spot.TopLeft })
+          )  // end Vertical Panel
+        ));  // end Group and call to add to template Map
+        myDiagram.nodeTemplate =
+          $(go.Node, "Vertical",
+            { // dropping on a Node is the same as dropping on its containing Group, even if it's top-level
+                
+            },
+            $(go.Picture,
+              { margin: 10, width: 20, height: 20, background: "transparent" }, // 图像的样式设置
+              new go.Binding("source", "isGateway", function(isGateway) {
+                // console.log(111);
+                if (isGateway === true) return "kt1/hostGateway.png";
+                else return "kt1/hostNormalImg.png"
+              })), // 将节点数据的 "icon" 属性绑定到图像的 "source" 属性
+            $(go.TextBlock,
+              {
+                margin: 5,
+                editable: true,
+                font: "bold 13px sans-serif",
+                opacity: 0.75,
+                stroke: "white",
+                alignment: go.Spot.Center // 设置文本居中
+              },
+              new go.Binding("text", "text"))
+        );
+
+        myDiagram.linkTemplate =
+        $(go.Link,
+          { routing: go.Link.Normal, corner: 5 },
+          $(go.Shape,
+            { stroke: "black", strokeWidth: 1, strokeDashArray: [5, 5] }), // 虚线样式
+          $(go.Shape,
+            { toArrow: "Standard", stroke: null })
+        );
+
+
+      var slider = document.getElementById("levelSlider");
+      slider.addEventListener('change', reexpand);
+      slider.addEventListener('input', reexpand);
+      load();
+      displayNodeTable();
+      createDynamicLinks();
+    }
+    function generateNodeTable(dataArray) {
+      var tableHtml = "<table>";
+      tableHtml += "<tr><th>Key</th><th>Text</th><th>Is Gateway</th></tr>";
+      dataArray.forEach(function(node) {
+        if (node.isGateway != null) {
+          tableHtml += "<tr>";
+          tableHtml += "<td>" + node.key + "</td>";
+          tableHtml += "<td>" + node.text + "</td>";
+          tableHtml += "<td>" + node.group + "</td>";
+          tableHtml += "<td>" + (node.isGateway ? "Yes" : "No") + "</td>";
+          tableHtml += "</tr>";
+        }
+        
+      });
+      tableHtml += "</table>";
+      return tableHtml;
+    }
+    // Display node data table
+    function displayNodeTable() {
+      var nodeDataArray = myDiagram.model.nodeDataArray;
+      var tableDiv = document.getElementById("tableDiv");
+      tableDiv.innerHTML = generateNodeTable(nodeDataArray);
+    }
+
+    // Call displayNodeTable function when the page loads
+    
+    function showTooltip(myDiagram, e) {
+      var tooltip = document.getElementById("tooltip");
+      // tooltip.innerText = data.text;
+      tooltip.style.left = e.clientX + "px";
+      tooltip.style.top = e.clientY + 20 + "px"; // 放置在鼠标位置下方
+      tooltip.style.display = "block";
+      console.log(e);
+      
+    }
+    function hideTooltip() {
+      var tooltip = document.getElementById("tooltip");
+      tooltip.style.display = "none";
+    }
+    function expandGroups(g, i, level) {
+      if (!(g instanceof go.Group)) return;
+      g.isSubGraphExpanded = i < level;
+      g.memberParts.each(function (m) {
+        expandGroups(m, i + 1, level);
+      })
+    }
+    function reexpand(e) {
+      myDiagram.startTransaction("reexpand");
+      var level = parseInt(document.getElementById("levelSlider").value);
+      myDiagram.findTopLevelGroups().each(function (g) { expandGroups(g, 0, level); })
+      myDiagram.commitTransaction("reexpand");
+    }
+    function createDynamicLinks() {
+      var diagram = myDiagram; // assuming "myDiagram" is your Diagram object
+      var nodes = diagram.model.nodeDataArray;
+      var links = [];
+
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.isGateway) {
+          for (var j = 0; j < nodes.length; j++) {
+            if (i !== j && nodes[j].isGateway) {
+              links.push({ from: node.key, to: nodes[j].key });
+            }
+          }
+        }
+      }
+      diagram.model.linkDataArray = links;
+    }
+
+    function save() {
+      document.getElementById("mySavedModel").value = myDiagram.model.toJson();
+      myDiagram.isModified = false;
+    }
+    function load() {
+      myDiagram.model = go.Model.fromJson(document.getElementById("mySavedModel").value);
+    }
+    ;
+    if (window.init) { init(); }
+  </script>
+</body>
+
+</html>
